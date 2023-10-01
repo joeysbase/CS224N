@@ -67,12 +67,18 @@ def main():
 
     if args.variant == 'vanilla':
         # [part c] Make some model here
-        vanilla_model = model.GPT(mconf)
+        pass
     elif args.variant == 'perceiver':
         # set mconf.perceiver, and mconf.bottleneck_dim parameters appropriately.
-        pass # [part g] Make some other model here
+        # [part g] Make some other model here
+        mconf.perceiver = True
+        mconf.bottleneck_dim = args.bottleneck_dim
     else:
         raise ValueError("Unknown model variant")
+
+    _model = model.GPT(mconf)
+    _model = _model.to(device)
+
 
     # Perform pretraining, finetuning, or evaluation
     if args.function == 'pretrain':
@@ -95,7 +101,7 @@ def main():
         # final_tokens=200*len(pretrain_dataset)*block_size
         # num_workers=4
         # writer=writer 
-        tconf = trainer.TrainerConfig(max_epoch=650, 
+        tconf = trainer.TrainerConfig(max_epochs=650, 
             batch_size=128, 
             learning_rate=args.pretrain_lr, 
             lr_decay=True, 
@@ -103,9 +109,9 @@ def main():
             final_tokens=200*len(pretrain_dataset)*block_size, 
             num_workers=4, 
             writer=writer)
-        pretrain_trainer = trainer.Trainer(vanilla_model, pretrain_dataset, None, tconf)
+        pretrain_trainer = trainer.Trainer(_model, pretrain_dataset, None, tconf)
         pretrain_trainer.train()
-        torch.save(vanilla_model.state_dict(), args.writing_params_path)
+        torch.save(_model.state_dict(), args.writing_params_path)
         # raise NotImplementedError
     elif args.function == 'finetune':
         assert args.writing_params_path is not None
@@ -146,7 +152,7 @@ def main():
         finetune_dataset = dataset.NameDataset(pretrain_dataset, fintune_text)
         if args.reading_params_path is not None:
             max_epoch = 10
-            vanilla_model.load_state_dict(torch.load(args,reading_params_path))
+            _model.load_state_dict(torch.load(args.reading_params_path))
         else:
             max_epoch = 75
         tconf = trainer.TrainerConfig(max_epochs=max_epoch, 
@@ -157,15 +163,15 @@ def main():
             final_tokens=200*len(pretrain_dataset)*block_size, 
             num_workers=4, 
             writer=writer)
-        finetune_trainer = trainer.Trainer(vanilla_model, finetune_dataset, None, tconf)
+        finetune_trainer = trainer.Trainer(_model, finetune_dataset, None, tconf)
         finetune_trainer.train()
-        torch.save(vanilla_model.state_dict(), args.writing_params_path)
+        torch.save(_model.state_dict(), args.writing_params_path)
         # raise NotImplementedError
     elif args.function == 'evaluate':
         assert args.outputs_path is not None
         assert args.reading_params_path is not None
         assert args.eval_corpus_path is not None
-        model.load_state_dict(torch.load(args.reading_params_path))
+        _model.load_state_dict(torch.load(args.reading_params_path))
         correct = 0
         total = 0
         with open(args.outputs_path, 'w', encoding='utf-8') as fout:
@@ -174,7 +180,7 @@ def main():
                 x = line.split('\t')[0]
                 x = x + '⁇'
                 x = torch.tensor([pretrain_dataset.stoi[s] for s in x], dtype=torch.long)[None,...].to(device)
-                pred = utils.sample(model, x, 32, sample=False)[0]
+                pred = utils.sample(_model, x, 32, sample=False)[0]
                 completion = ''.join([pretrain_dataset.itos[int(i)] for i in pred])
                 pred = completion.split('⁇')[1]
                 predictions.append(pred)
